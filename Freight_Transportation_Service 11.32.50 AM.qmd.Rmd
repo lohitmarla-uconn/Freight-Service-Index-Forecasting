@@ -1,0 +1,755 @@
+---
+title: "Forecasting Transportation Services Index (TSI) Values: A Time Series Analysis"
+output:
+  html_document: default
+  pdf_document: default
+author: "Lohit Marla"
+date: "2024-04-09"
+---
+
+Data Source : https://data.bts.gov/Research-and-Statistics/Freight-Transportation-Service-Index/n68x-u7m7
+
+# Description:
+
+The aim of this project is to develop a forecasting model for the Transportation Services Index (TSI) based on historical data. The TSI, produced by the Bureau of Transportation Statistics (BTS), serves as a measure of the volume of freight and passenger transportation services moved monthly by the for-hire transportation sector in the United States. This index is composed of three components: a freight index, a passenger index, and a combined index, each incorporating data from various for-hire transportation modes.
+
+The primary focus of this project is to forecast the TSI values exclusively, while disregarding the other components of the index. Changes in the TSI reflect fluctuations excluding the external schoks in the demand for transportation services, which are indicative of broader economic trends. For instance, during periods of economic expansion, there is typically an increase in the demand for goods and services, leading to a corresponding rise in the TSI.
+
+To achieve this objective, we will utilize time series analysis techniques to model the historical TSI data and generate forecasts for future TSI values. Time series analysis allows us to identify patterns, trends, and seasonal variations in the data, which are crucial for developing accurate forecasting models. We will explore various time series forecasting methods, such as autoregressive integrated moving average (ARIMA), exponential smoothing methods.
+
+The forecasted TSI values will provide valuable insights for stakeholders in the transportation industry, policymakers, and economic analysts. By anticipating changes in the demand for transportation services, informed decisions can be made regarding infrastructure investments, capacity planning, and economic policy formulation. Additionally, understanding future trends in transportation demand can help businesses optimize their supply chain management strategies and logistics operations.
+
+Overall, this project aims to contribute to a better understanding of the dynamics of transportation services demand and provide actionable forecasts to support decision-making processes in both the public and private sectors.
+
+```{r}
+
+library(tidyverse)
+library(tseries)
+transportation <- read_csv("Transportation_Services_Index_and_Seasonally.csv")
+transportation
+
+```
+From the above data set we are interested in performing the analysis on the TSI_Total variable. 
+
+Below are the time series, acf, pacf and covariance plots of tsi_total variable   
+```{r}
+
+ts_transportation <- ts(transportation$TSI_Total, start = c(2000, 1), frequency = 12, end = c(2023, 12))
+
+plot(ts_transportation,main= " ",
+xlab= "Time (months)", ylab="TSI_Total",type="o")
+
+par(mfrow = c(2, 2))
+ts.plot(ts_transportation)
+acf(ts_transportation)
+pacf(ts_transportation)
+acf(ts_transportation,type="covariance") 
+
+par(mfrow = c(2, 2))
+plot(diff(ts_transportation))
+acf(diff( ts_transportation))
+pacf(diff(ts_transportation))
+acf(diff(ts_transportation),type="covariance") 
+
+```
+From the above regular time series plot we can see that the data is not stationary as the trend is moving upward gradually however fallen down during the covid period also, the acf and pacf plots does not looks stationary as there are significant lags over the period. After differencing the data we can see the data is stationary except at the covid time also the acf and pacf of the differenced time period looks good where as for the pacf plot indicates that the lag is significant at lag 1. 
+
+To make the plot normal logarithm transformation was applied on the data however it does not normalize the data close to zero which we can observe in the acf and pacf plots. 
+```{R}
+
+par(mfrow = c(2, 2))
+ts.plot(log(ts_transportation))
+acf(log(ts_transportation))
+pacf(log(ts_transportation))
+acf(log(ts_transportation),type="covariance") 
+
+```
+
+As our analysis is mostly focusing with no external skocks. Filtered the data set till the year 2020 where it faced the external effect of pandemic later to it. 
+
+Following are the plots to identify and analyze the correlation structure of time series filtered data where we can observe that the acf plot has many significant lags where as for the pacf plot we can observe that the first lag is significant.
+
+```{r}
+
+ts_transportation_filtered <- ts_transportation[1:204]
+par(mfrow = c(2, 2))
+ts.plot(ts_transportation_filtered)
+acf(ts_transportation_filtered)
+pacf(ts_transportation_filtered)
+acf(ts_transportation_filtered,type="covariance") 
+
+```
+Following are the moving average for three and six months respectively on the time series data to understand the smoothing feature of the data. 
+
+```{r}
+
+library(zoo)
+
+# Calculate 3-month moving average
+moving_avg <- rollmean(ts_transportation_filtered, k = 3, align = "center", fill = NA)
+
+# Plot original time series and moving average
+plot(ts_transportation_filtered, main="Original Time Series vs. 3-Month Moving Average", ylab="Transportation Index")
+lines(moving_avg, col="red")
+legend("topright", legend=c("Original", "Moving Average"), col=c("black", "red"), lty=1)
+
+```
+
+```{r}
+
+# Calculate 6-month moving average
+moving_avg <- rollmean(ts_transportation_filtered, k = 6, align = "center", fill = NA)
+
+# Plot original time series and moving average
+plot(ts_transportation_filtered, main="Original Time Series vs. 6-Month Moving Average", ylab="Transportation Index")
+lines(moving_avg, col="red")
+legend("topright", legend=c("Original", "Moving Average"), col=c("black", "red"), lty=1)
+
+```
+Following are the time series, acf and pacf plots of the filtered time series plot and the data looks stationary from the acf plot first lag is significant where as the pacf plot has first lag is significant. 
+
+```{r}
+
+par(mfrow = c(2, 2))
+ts.plot(diff(ts_transportation_filtered))
+acf(diff(ts_transportation_filtered))
+pacf(diff(ts_transportation_filtered))
+acf(diff(ts_transportation_filtered),type="covariance") 
+
+adf.test((ts_transportation_filtered))
+
+adf.test(diff(ts_transportation_filtered))
+
+```
+After performing the statistical test of adf to check for the stationarity I see the data is not stationary for the non differenced data as the result is insignificant and the p-value is above 0.05 and for the difference data we can observe that it is stationary as the result is significant and reject the null hypothesis of stationarity. 
+
+Splitted the data into the train and the test data sets
+```{r}
+
+train_transportation <- ts_transportation_filtered[1:180] # take filtered data 
+test_transportation  <- ts_transportation_filtered[180 : 203]
+
+time_train_transportation  <- time(train_transportation)
+time_test_transportation   <- time(test_transportation)
+
+```
+
+Applied the linear models on top of the data where the time series data is the response variable whereas the time object is on the predicotr variable. 
+
+```{r}
+
+mlr.lin = lm( train_transportation ~ time_train_transportation)
+summary(mlr.lin)
+
+par(mfrow=c(2,2)) 
+plot(mlr.lin, main="",which = 1:4)
+
+```
+The linear regression model indicates a strong positive relationship between time and train transportation, with each unit increase in time associated with a 0.102 unit increase in train transportation, holding other variables constant. The model explains approximately 63.34% of the variability in train transportation, with both the intercept and time coefficient being statistically significant predictors (p < 0.001). However, the residual plots does not looks good as there is a huge spikes in the residual plot from center. 
+
+
+```{r}
+
+time_sqft_train_transportation = time_train_transportation^2/factorial(2)
+mlr.quad=lm( train_transportation ~ time_train_transportation+time_sqft_train_transportation ) 
+summary(mlr.quad)
+
+par(mfrow=c(2,2)) 
+plot(mlr.quad, main="",which = 1:4)
+
+```
+The multiple linear regression model shows that for each unit increase in time_train_transportation, train transportation increases by approximately 0.118 units, holding other variables constant. However, the coefficient for time_sqft_train_transportation is not statistically significant (p = 0.488), suggesting it does not significantly impact train transportation. The overall model, including both predictors, explains approximately 63.03% of the variability in train transportation, with a statistically significant F-statistic (< 2.2e-16). However, the residual plots does not looks good as there is a huge spikes in the residual plot from the center and is not normal. 
+
+```{r}
+
+time_cubic_train_transportation= time_train_transportation^3/factorial(3)
+mlr.cubic=lm( train_transportation ~ time_train_transportation+time_sqft_train_transportation+time_cubic_train_transportation ) 
+summary(mlr.cubic)
+
+par(mfrow=c(2,2)) 
+plot(mlr.cubic, main="",which = 1:4)
+
+```
+The multiple linear regression model with time_train_transportation, time_sqft_train_transportation, and time_cubic_train_transportation as predictors indicates that, for each unit increase in time_train_transportation, train transportation increases by approximately 0.466 units, holding other variables constant. Additionally, both time_sqft_train_transportation and time_cubic_train_transportation have statistically significant negative coefficients, suggesting that increases in these variables are associated with decreases in train transportation. The overall model explains approximately 71.54% of the variability in train transportation, with a significant F-statistic (p < 2.2e-16). However, the residual plots does not looks good as there is a huge spikes in the residual plot from the center and is not normal.
+
+```{r}
+
+time_four_train_transportation= time_train_transportation^4/factorial(4)
+mlr.four=lm( train_transportation ~ time_train_transportation+time_sqft_train_transportation+time_cubic_train_transportation+time_four_train_transportation ) 
+summary(mlr.four)
+
+par(mfrow=c(2,2)) 
+plot(mlr.four, main="",which = 1:4)
+
+```
+The multiple linear regression model with time_train_transportation, time_sqft_train_transportation, time_cubic_train_transportation, and time_four_train_transportation as predictors indicates that only time_sqft_train_transportation and time_cubic_train_transportation have statistically significant coefficients. Specifically, for each unit increase in time_sqft_train_transportation and time_four_train_transportation, train transportation increases by approximately 0.01708 and decreases by approximately 0.0005851, respectively. However, the residual plots does not looks good as there is a huge spikes in the residual plot from the center and is not normal.
+
+Following are the plots fitted by all the linear, quadratic, cubic and bi-quadratic polynomial.
+
+```{r}
+
+
+par(mfrow=c(2,2))
+ts.plot(train_transportation) # Time Series Plot
+# Plot of xfit vs mlr.lin$fitted
+plin=cbind(train_transportation,mlr.lin$fitted)
+ts.plot(plin,main="xfit and fit.linear")
+pquad=cbind(train_transportation,mlr.quad$fitted)
+ts.plot(pquad,main="xfit and fit.quadratic")
+pcub=cbind(train_transportation,mlr.cubic$fitted)
+ts.plot(pcub,main="xfit and fitt.cubic")
+
+```
+
+```{r}
+
+# Create a dataframe to store the model summary information
+model_summary <- data.frame(
+  Model = c("Linear", "Quadratic", "Cubic", "4th Degree"),
+  Multiple_R_squared = c(0.6334, 0.6344, 0.7202, 0.7773),
+  Adjusted_R_squared = c(0.6313, 0.6303, 0.7154, 0.7722),
+  F_statistic = c(307.5, 153.6, 151, 152.7),
+  Residual_DF = c(178, 177, 176, 175),
+  Residual_standard_error = c(4.052, 4.057, 3.56, 3.185)
+)
+
+# Print the dataframe
+print(model_summary)
+
+
+```
+This table summarizes the performance of different regression models based on their multiple R-squared, adjusted R-squared, F-statistic, residual degrees of freedom, and residual standard error. 
+
+- The linear model has a multiple R-squared of 0.6334 and an adjusted R-squared of 0.6313, indicating that it explains about 63.13% of the variability in the response variable with 307.5 F-statistic.
+- The quadratic model shows similar performance with a slightly lower adjusted R-squared of 0.6303 and a residual standard error of 4.057.
+- The cubic model performs better with a higher adjusted R-squared of 0.7154 and a lower residual standard error of 3.560.
+- The 4th Degree model outperforms the others with the highest adjusted R-squared of 0.7722 and the lowest residual standard error of 3.185.
+
+```{r}
+
+AIC.lin = AIC(mlr.lin)
+AIC.quad = AIC(mlr.quad)
+AIC.cubic = AIC(mlr.cubic)
+print(AIC.lin)
+print(AIC.quad)
+print(AIC.cubic)
+
+print("---------------")
+
+BIC.lin = BIC(mlr.lin)
+BIC.quad = BIC(mlr.quad)
+BIC.cubic = BIC(mlr.cubic)
+print(BIC.lin)
+print(BIC.quad)
+print(BIC.cubic)
+
+```
+The code calculates the Akaike Information Criterion (AIC) and Bayesian Information Criterion (BIC) for three different regression models: linear, quadratic, and cubic. 
+
+- For the AIC, lower values indicate a better model fit. In this case, the cubic model has the lowest AIC of 973.8577, followed by the linear model with 1018.483 and the quadratic model with 1019.993.
+- Similarly, for the BIC, lower values suggest a better fit. The cubic model again has the lowest BIC of 989.8224, followed by the linear model with 1028.062 and the quadratic model with 1032.765. 
+
+Overall, both AIC and BIC suggest that the cubic model provides the best fit among the three models.
+
+```{r}
+
+#linear
+new <- data.frame(time_train_transportation = 205:288)
+# use predict function
+pfore.lin=predict(mlr.lin,new,se.fit = TRUE)
+efore.lin=test_transportation-pfore.lin$fit 
+nfore=length(test_transportation)
+
+me.lin=mean(efore.lin) # Mean Error
+mpe.lin=100*(mean(efore.lin/test_transportation)) # Mean Percent Error
+mse.lin=sum(efore.lin**2)/nfore # Mean Squared Error
+mae.lin=mean(abs(efore.lin)) # Mean Absolute Error
+mape.lin=100*(mean(abs((efore.lin)/test_transportation))) # Mean Absolute Percent Error
+me.lin
+mpe.lin
+mse.lin
+mae.lin
+mape.lin
+
+```
+The linear regression model exhibits a slight negative bias, with an average error of approximately -1.54. The average percentage error relative to the actual values is approximately -1.26%. The model's predictions have an average squared error of approximately 31.24 and an average absolute error of approximately 2.46. The average absolute percentage error relative to the actual values is approximately 2.00%.
+
+```{r}
+
+#quadratic
+matq=matrix(c(time_train_transportation,time_sqft_train_transportation),nrow=84,ncol=2,dimnames = list(c(),c("time_train_transportation","time_sqft_train_transportation")))
+matq <- data.frame(matq)
+pfore.quad=predict(mlr.quad,matq,se.fit = TRUE)
+efore.quad=test_transportation-pfore.quad$fit
+nfore=length(test_transportation)
+
+me.quad=mean(efore.quad) # Mean Error
+mpe.quad=100*(mean(efore.quad/test_transportation)) # Mean Percent Error
+mse.quad=sum(efore.quad**2)/nfore # Mean Squared Error
+mae.quad=mean(abs(efore.quad)) # Mean Absolute Error
+mape.quad=100*(mean(abs((efore.quad)/test_transportation))) # Mean Absolute Percent Error
+me.quad
+mpe.quad
+mse.quad
+mae.quad
+mape.quad
+
+```
+For the quadratic regression model, the average error is approximately 19.08 units. The average percentage error relative to the actual values is approximately 15.53%. The model's predictions have an average squared error of approximately 1304.15 and an average absolute error of approximately 19.08 units. The average absolute percentage error relative to the actual values is approximately 15.53%.
+
+```{r}
+
+#cubic
+
+matq=matrix(c(time_train_transportation,time_sqft_train_transportation, time_cubic_train_transportation),nrow=84,ncol=3,dimnames = list(c(),c("time_train_transportation","time_sqft_train_transportation", "time_cubic_train_transportation")))
+matq <- data.frame(matq)
+
+pfore.cubic=predict(mlr.cubic,matq,se.fit = TRUE)
+efore.cubic=test_transportation-pfore.cubic$fit
+nfore=length(test_transportation)
+
+me.cubic=mean(efore.cubic) # Mean Error
+mpe.cubic=100*(mean(efore.cubic/test_transportation)) # Mean Percent Error
+mse.cubic=sum(efore.cubic**2)/nfore # Mean Squared Error
+mae.cubic=mean(abs(efore.cubic)) # Mean Absolute Error
+mape.cubic=100*(mean(abs((efore.cubic)/test_transportation))) # Mean Absolute Percent Error
+me.cubic
+mpe.cubic
+mse.cubic
+mae.cubic
+mape.cubic
+
+```
+For the cubic regression model, the average error is approximately 10.73 units. The average percentage error relative to the actual values is approximately 8.73%. The model's predictions have an average squared error of approximately 835.27 and an average absolute error of approximately 12.64 units. The average absolute percentage error relative to the actual values is approximately 8.73%
+
+```{r}
+
+library(dplyr)
+
+# Create data frames for AIC and BIC values
+aic_bic <- data.frame(
+  Model = c("Linear", "Quadratic", "Cubic"),
+  AIC = c(1018.483, 1028.062, 973.8577),
+  BIC = c(1019.993, 1032.765, 989.8224)
+)
+
+# Create data frames for model metrics
+linear_metrics <- data.frame(
+  Model = "Linear",
+  ME = -1.540922,
+  MPE = -1.25843,
+  MSE = 31.23893,
+  MAE = 2.455101,
+  MAPE = 2.000836
+)
+
+quadratic_metrics <- data.frame(
+  Model = "Quadratic",
+  ME = 19.08148,
+  MPE = 15.53051,
+  MSE = 1304.153,
+  MAE = 19.08148,
+  MAPE = 15.53051
+)
+
+cubic_metrics <- data.frame(
+  Model = "Cubic",
+  ME = 10.72762,
+  MPE = 8.733014,
+  MSE = 835.2739,
+  MAE = 12.64123,
+  MAPE = 10.29451
+)
+
+# Combine all data frames into a single table
+combined_table <- bind_rows(aic_bic, linear_metrics, quadratic_metrics, cubic_metrics)
+
+# Print the combined table
+print(combined_table)
+
+
+```
+Based on the provided table, the cubic model appears to be the best choice among the three models (linear, quadratic, and cubic). It has the lowest AIC and BIC values, indicating better fit compared to the other models. Additionally, it has lower error metrics such as mean absolute error (MAE) and mean squared error (MSE), suggesting better predictive performance.
+
+Following is the code to fit the seasonality 
+```{r}
+
+per=12
+sets=length(time_train_transportation)/per
+month=factor(rep(1:per,sets))
+
+time_cubic_train_transportation= time_train_transportation^3/factorial(3)
+mlr.cubic.month=lm( train_transportation ~ time_train_transportation+time_sqft_train_transportation+time_cubic_train_transportation +month ) 
+summary(mlr.cubic.month)
+
+par(mfrow=c(2,2)) 
+plot(mlr.cubic.month, main="",which = 1:4)
+
+```
+From the above summary we can observe that the monthly indicators are not significant and has no relationship with the time series data. 
+
+```{r}
+
+per=12
+sets=length(time_train_transportation)/per
+month=factor(rep(1:per,sets))
+
+mlr.quad.month=lm( train_transportation ~ time_train_transportation+time_sqft_train_transportation +month ) 
+summary(mlr.quad.month)
+
+par(mfrow=c(2,2)) 
+plot(mlr.quad.month, main="",which = 1:4)
+
+
+```
+From the above summary we can observe that the monthly indicators are not significant and has no relationship with the time series data and the residual plots are not significant. 
+
+```{r}
+
+per=12
+sets=length(time_train_transportation)/per
+month=factor(rep(1:per,sets))
+
+mlr.lin.month=lm( train_transportation ~ time_train_transportation +month ) 
+summary(mlr.lin.month)
+
+par(mfrow=c(2,2)) 
+plot(mlr.lin.month, main="",which = 1:4)
+
+```
+From the above summary we can observe that the monthly indicators are not significant and has no relationship with the time series data and the residual plots are not significant. 
+
+Following is the code to fit the cos and sin trignomietric functions. 
+
+```{r}
+
+t=1:length(train_transportation)
+per=12
+# Model 1
+c1=cos(2*pi*t/per)
+s1=sin(2*pi*t/per)
+accd_trig1=lm(time_train_transportation~c1+s1)
+summary(accd_trig1)
+
+```
+
+
+```{r}
+
+c2=cos(2*pi*2*t/per)
+s2=sin(2*pi*2*t/per)
+accd_trig2=lm(time_train_transportation~c1+s1+c2+s2)
+summary(accd_trig2)
+
+```
+From the above both the summaries we can observe that there is no effect and relationship of the c1, c2, s1 and s2 on the data 
+
+
+Following is the code to fit the auto auto regressive integrated moving average(arima) functions to figure out the best order to fit the model based on the data. 
+
+```{r}
+library(forecast)
+library(astsa)
+
+auto.arima(train_transportation,ic="bic")
+
+```
+The ARIMA(0,1,0) model was fitted to the series "train_transportation." The estimated variance of the residuals (sigma^2) is 1.431, and the log likelihood of the model is -286.05 based on the BIC values.
+
+```{r}
+
+auto.arima(train_transportation,ic="aic")
+
+```
+The auto.arima function identified an ARIMA(3,1,2) model with drift as the best-fitting model for the "train_transportation" series based on the Akaike Information Criterion (AIC). This model includes three autoregressive terms (AR) at lag 1, 2, and 3, and two moving average terms (MA) at lag 1 and 2, along with a drift term. The estimated coefficients for the AR and MA terms are provided, along with their standard errors. The estimated variance of the residuals (sigma^2) is 1.34, and the log likelihood of the model is -277.47. Lower values of AIC, AICc, and BIC indicate better model fit.
+
+
+```{r}
+
+d <- 1  # no differencing needed
+np <- 3 # maximum AR order
+nq <- 3 # maximum MA order
+outarima.all <- matrix(nrow=(np+1)*(nq+1), ncol=3)
+colnames(outarima.all) <- c("p", "q", "BIC")
+
+# Check for missing values
+if (any(is.na(train_transportation))) {
+  stop("Input data contains missing values.")
+}
+
+for (p in 0:np) {
+  for (q in 0:nq) {
+    # Try fitting SARIMA model
+    tryCatch({
+      gnpgr.fit <- sarima(train_transportation, p, d, q, details = FALSE)
+      outarima.all[p*(nq+1) + q + 1, ] <- c(p, q, gnpgr.fit$BIC)
+    }, error = function(e) {
+      cat("Error occurred for p =", p, "and q =", q, ":", conditionMessage(e), "\n")
+    })
+  }
+}
+
+outarima.all
+
+outarima.all[which.min(outarima.all[,3]),]
+
+```
+The code snippet performs a grid search to identify the best-fitting SARIMA model for the "train_transportation" series based on the Bayesian Information Criterion (BIC). It iterates over different combinations of AR (p) and MA (q) orders, ranging from 0 to 3. For each combination, it attempts to fit a SARIMA model and stores the resulting BIC value in a matrix. If an error occurs during model fitting, it handles the error and continues the iteration. After completing the grid search, it selects the model with the lowest BIC value as the best-fitting model, which corresponds to an ARIMA(0,1,0) model. This model indicates that no differencing is needed, with no autoregressive or moving average terms, as indicated by p = 0 and q = 0, respectively.
+
+
+```{r}
+
+freight_auto_arima = arima(train_transportation,order=c(0,1,0), method='CSS',
+include.mean=TRUE)
+summary(freight_auto_arima)
+
+ar1.resid=na.omit(freight_auto_arima$resid)
+ar1.resid
+
+par(mfrow=c(2,2)) 
+ts.plot(ar1.resid,main="Residuals from AR(1) fit" )
+
+hist(ar1.resid,main="histogram",xlab="resid")
+
+qqnorm(ar1.resid,main="Normal Q-Q plot",xlab="resid"); qqline(ar1.resid)
+
+```
+
+```{r}
+shapiro.test(ar1.resid)
+
+acf(as.numeric(ar1.resid), lag.max=40, main="")
+
+Box.test(ar1.resid, lag=4, fitdf=1)
+
+Box.test(ar1.resid, lag=8, fitdf=1)
+
+Box.test(ar1.resid, lag=4, type="Ljung", fitdf=1)
+```
+The p-value obtained (2.256e-07) suggests significant departure from normality, indicating non-normality in the residuals.
+
+The Box-Pierce and Box-Ljung tests evaluate the autocorrelation of the residuals. Both tests yield p-values below conventional significance levels (0.05), suggesting that there is significant autocorrelation present in the residuals. This indicates that the residuals are not independent, violating one of the assumptions of the ARIMA model.
+
+
+```{r}
+
+rec.yw.fore <- predict(freight_auto_arima, n.ahead=24)
+rec.yw.fore
+
+U.yw <- rec.yw.fore$pred + rec.yw.fore$se
+L.yw <- rec.yw.fore$pred - rec.yw.fore$se
+month <- 181:204
+plot(month,ts_transportation_filtered[month],type="o",xlim=c(181, 204),ylab="recruits",
+ylim=c(min(L.yw), max(U.yw))) # data
+lines(rec.yw.fore$pred,col="red",type="o") # point forecasts
+lines(U.yw,col="blue",lty="dashed") # upper limit
+lines(L.yw,col="blue",lty="dashed") # lower limit
+
+efore.freight_auto_arima=test_transportation - rec.yw.fore$pred
+nfore=length(test_transportation)
+
+me.freight_auto_arima=mean(efore.freight_auto_arima) # Mean Error
+mpe.freight_auto_arima=100*(mean(efore.freight_auto_arima/test_transportation)) # Mean Percent Error
+mse.freight_auto_arima=sum(efore.freight_auto_arima**2)/nfore # Mean Squared Error
+mae.freight_auto_arima=mean(abs(efore.freight_auto_arima)) # Mean Absolute Error
+mape.freight_auto_arima=100*(mean(abs((efore.freight_auto_arima)/test_transportation))) # Mean Absolute Percent Error
+me.freight_auto_arima
+mpe.freight_auto_arima
+mse.freight_auto_arima
+mae.freight_auto_arima
+mape.freight_auto_arima
+
+```
+From the predictions of the 2 years data we can observe that the data points are close to some points however not completely close. 
+
+Following is the code to fit the order 0, 1, 1 and interpret the results. 
+```{r}
+
+freight_prof = arima(train_transportation,order=c(0,1,1), method='CSS',
+include.mean=TRUE)
+summary(freight_prof)
+
+ar1.resid=na.omit(freight_prof$resid)
+ar1.resid
+
+par(mfrow=c(2,2)) 
+ts.plot(ar1.resid,main="Residuals from AR(1) fit" )
+
+hist(ar1.resid,main="histogram",xlab="resid")
+
+qqnorm(ar1.resid,main="Normal Q-Q plot",xlab="resid"); qqline(ar1.resid)
+
+```
+
+
+```{r}
+
+shapiro.test(ar1.resid)
+
+```
+From the shapiro test we can observe that the residuals are not normal. 
+
+```{r}
+
+acf(as.numeric(ar1.resid), lag.max=40, main="")
+
+Box.test(ar1.resid, lag=4, fitdf=1)
+
+Box.test(ar1.resid, lag=8, fitdf=1)
+
+Box.test(ar1.resid, lag=4, type="Ljung", fitdf=1)
+
+```
+The Box-Pierce and Box-Ljung tests assess the autocorrelation of the residuals from the ARIMA(0,1,1) model. The p-values obtained are 0.06788, 0.08795, and 0.06216, respectively. These p-values are all above the conventional significance level of 0.05. Therefore, we fail to reject the null hypothesis that there is no autocorrelation in the residuals. This suggests that the residuals are relatively independent, indicating that the ARIMA(0,1,1) model adequately captures the temporal dependence in the data.
+
+```{r}
+
+rec.yw.fore <- predict(freight_prof, n.ahead=24)
+rec.yw.fore
+
+U.yw <- rec.yw.fore$pred + rec.yw.fore$se
+L.yw <- rec.yw.fore$pred - rec.yw.fore$se
+month <- 181:204
+plot(month,ts_transportation_filtered[month],type="o",xlim=c(181, 204),ylab="recruits",
+ylim=c(min(L.yw), max(U.yw))) # data
+lines(rec.yw.fore$pred,col="red",type="o") # point forecasts
+lines(U.yw,col="blue",lty="dashed") # upper limit
+lines(L.yw,col="blue",lty="dashed") # lower limit
+
+efore.freight_prof=test_transportation - rec.yw.fore$pred
+nfore=length(test_transportation)
+
+me.freight_prof=mean(efore.freight_prof) # Mean Error
+mpe.freight_prof=100*(mean(efore.freight_prof/test_transportation)) # Mean Percent Error
+mse.freight_prof=sum(efore.freight_prof**2)/nfore # Mean Squared Error
+mae.freight_prof=mean(abs(efore.freight_prof)) # Mean Absolute Error
+mape.freight_prof=100*(mean(abs((efore.freight_prof)/test_transportation))) # Mean Absolute Percent Error
+me.freight_prof
+mpe.freight_prof
+mse.freight_prof
+mae.freight_prof
+mape.freight_prof
+
+```
+From the predictions of the 2 years data we can observe that the data points are close to some points however not completely close. 
+
+```{r}
+
+freight_iterations = arima(train_transportation,order=c(3,1,2), method='CSS',
+include.mean=TRUE)
+freight_iterations
+
+ar1.resid=na.omit(freight_iterations$resid)
+ar1.resid
+
+par(mfrow=c(2,2)) 
+ts.plot(ar1.resid,main="Residuals from AR(1) fit" )
+
+hist(ar1.resid,main="histogram",xlab="resid")
+
+qqnorm(ar1.resid,main="Normal Q-Q plot",xlab="resid"); qqline(ar1.resid)
+
+```
+
+```{r}
+shapiro.test(ar1.resid)
+```
+Residuals are not normal from the above shapiro wilk test.
+```{r}
+
+acf(as.numeric(ar1.resid), lag.max=40, main="")
+
+Box.test(ar1.resid, lag=4, fitdf=1)
+
+Box.test(ar1.resid, lag=8, fitdf=1)
+
+Box.test(ar1.resid, lag=4, type="Ljung", fitdf=1)
+
+rec.yw.fore <- predict(freight_iterations, n.ahead=24)
+rec.yw.fore
+
+U.yw <- rec.yw.fore$pred + rec.yw.fore$se
+L.yw <- rec.yw.fore$pred - rec.yw.fore$se
+month <- 181:204
+plot(month,ts_transportation_filtered[month],type="o",xlim=c(181, 204),ylab="recruits",
+ylim=c(min(L.yw), max(U.yw))) # data
+lines(rec.yw.fore$pred,col="red",type="o") # point forecasts
+lines(U.yw,col="blue",lty="dashed") # upper limit
+lines(L.yw,col="blue",lty="dashed") # lower limit
+
+efore.freight_iterations=test_transportation - rec.yw.fore$pred
+nfore=length(test_transportation)
+
+me.freight_iterations = mean(efore.freight_iterations) # Mean Error
+mpe.freight_iterations=100*(mean(efore.freight_iterations/test_transportation)) # Mean Percent Error
+mse.freight_iterations=sum(efore.freight_iterations**2)/nfore # Mean Squared Error
+mae.freight_iterations=mean(abs(efore.freight_iterations)) # Mean Absolute Error
+mape.freight_iterations=100*(mean(abs((efore.freight_iterations)/test_transportation))) # Mean Absolute Percent Error
+me.freight_iterations
+mpe.freight_iterations
+mse.freight_iterations
+mae.freight_iterations
+mape.freight_iterations
+
+```
+From the predictions of the 2 years data we can observe that the data points are close to some points however not completely close but little better than the previous two models. 
+
+```{r}
+
+# Create a data frame with the computed values
+results <- data.frame(
+  Model = c("freight_3_1_2", "freight_0_1_1", "freight_0_1_0"),
+  ME = c(me.freight_iterations, me.freight_prof, me.freight_auto_arima),
+  MPE = c(mpe.freight_iterations, mpe.freight_prof, mpe.freight_auto_arima),
+  MSE = c(mse.freight_iterations, mse.freight_prof, mse.freight_auto_arima),
+  MAE = c(mae.freight_iterations, mae.freight_prof, mae.freight_auto_arima),
+  MAPE = c(mape.freight_iterations, mape.freight_prof, mape.freight_auto_arima)
+)
+
+# Print the table
+print(results)
+
+```
+Based on the provided metrics, the model "freight_0_1_0" has the lowest values for Mean Error (ME), Mean Percent Error (MPE), Mean Squared Error (MSE), Mean Absolute Error (MAE), and Mean Absolute Percent Error (MAPE). Therefore, the "freight_0_1_0" model performs better compared to the other models listed.
+
+
+Based on the coefficients and their standard errors, the ARIMA model with order (3, 1, 2) appears to be better as it includes multiple autoregressive (AR) and moving average (MA) terms, indicating a more complex and potentially better capturing of the underlying patterns in the data. Additionally, the standard errors of the coefficients in the (3, 1, 2) model are relatively smaller compared to the (0, 1, 0) model, suggesting more precise estimates. However, model selection should also consider other factors such as model fit diagnostics and forecast performance.
+
+Following is the code to verify for the arch effect on the data where it does not have the covid data. 
+```{r}
+
+freight_diff = diff(log(train_transportation))*100; plot(freight_diff, type = "l"); abline(h=0)
+
+```
+
+```{r}
+
+par(mar=c(4.5,5,1.5,1), mfcol=c(2,3))
+acf(freight_diff, main="return", xlab="Lag", lag=50)
+pacf(freight_diff, main="", xlab="Lag", lag=50)
+acf(abs(freight_diff), main="abs return", xlab="Lag", lag=50)
+pacf(abs(freight_diff), main="", xlab="Lag", lag=50)
+acf(freight_diff^2, main="sqr return", xlab="Lag", lag=50)
+pacf(freight_diff^2, main="", xlab="Lag", lag=50)
+
+```
+
+```{r}
+
+library(TSA)
+McLeod.Li.test(y=freight_diff)
+
+```
+
+```{r}
+
+skewness(freight_diff)
+
+kurtosis(freight_diff)
+
+qqnorm(freight_diff); qqline(freight_diff)
+
+shapiro.test(freight_diff)
+
+```
+From the above x square return plots, mcleod test we can observe that there is no arch effect on the data. However the data is not normal based on the q-q- plot and shapiro wilk test.

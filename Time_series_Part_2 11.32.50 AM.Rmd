@@ -1,0 +1,326 @@
+---
+title: "Time_Series_Project_Including the Covid Data"
+author: "Lohit Marla"
+date: "2024-04-29"
+output: html_document
+---
+
+Now consider the covid data as well where I have added a new variable call covid_indicator manually which indicates the covid effect. 
+
+```{r}
+
+library(janitor)
+library(tidyverse)
+library(tseries)
+library(dplyr)
+library(zoo)
+library(forecast)
+library(astsa)
+library(TSA)
+
+
+tsi_data <- read_csv("With_covid_indicator.csv")
+
+tsi_data <- clean_names(tsi_data)
+# Assuming your data frame is named 'tsi_data'
+# Convert 'OBS_DATE' to a Date object if it's not already
+tsi_data$obs_date <- as.Date(tsi_data$obs_date)
+
+# Fit ARIMAX model with the original time series
+arimax_model <- arima(tsi_data$tsi_total, order = c(1, 1, 1), xreg = tsi_data[, "covid_indicator"])
+
+# Plot ACF of residuals
+residuals <- residuals(arimax_model)
+acf(residuals, main = "ACF of ARIMAX Model Residuals")
+
+```
+From the above arimax model which was fitted based on the exogenous variable called covid_indicator there is no effect of it and also the residuals indicates that there is significant lags 
+
+Based on the acf and pacf plots implemented the following arima model with the order 1, 1, 1
+```{r}
+
+arimax_model <- arima((tsi_data$tsi_total), order = c(1, 1, 1))
+
+# Summary of the ARIMAX model
+summary(arimax_model)
+
+residuals <- residuals(arimax_model)
+
+acf(residuals, main = "ACF of ARIMAX Model Residuals", na.action = na.pass)
+plot(residuals(arimax_model))
+
+```
+From the visual inspection of the autocorrelation function (ACF) plot of the residuals, it can be determined that the residuals exhibit desirable characteristics. Specifically, the ACF plot demonstrates a lack of significant autocorrelation at various lags, indicating that the residuals are relatively uncorrelated and exhibit no systematic patterns. This suggests that the ARIMA model adequately captures the temporal dependence in the data, and the residuals display randomness, meeting one of the key assumptions of the model.
+
+```{r}
+
+# Remove missing values from residuals
+clean_residuals <- residuals[!is.na(residuals)]
+
+
+residuals <- clean_residuals
+
+hist(residuals,main="histogram",xlab="resid")
+
+qqnorm(residuals,main="Normal Q-Q plot",xlab="resid"); qqline(residuals)
+
+shapiro.test(residuals)
+
+acf(as.numeric(residuals), lag.max=40, main="")
+
+Box.test(residuals, lag=4, fitdf=1)
+
+Box.test(residuals, lag=8, fitdf=1)
+
+Box.test(residuals, lag=4, type="Ljung", fitdf=1)
+
+rec.yw.fore <- predict(arimax_model, n.ahead=48)
+rec.yw.fore
+
+```
+
+Despite the apparent adequacy of the residuals observed in the autocorrelation function (ACF) plot, further examination using the Shapiro-Wilk test, histograms, and Q-Q plots reveals that the residuals do not conform to a normal distribution. These diagnostic tests suggest departures from normality, indicating potential limitations in the model's ability to fully capture the underlying variability in the data.
+
+Following is the forecast plot based on the above predictions 
+```{r}
+
+# Plot original data
+plot(tsi_data$tsi_total, type = "l", col = "blue", lwd = 2, 
+     xlab = "Time", ylab = "TSI Total", main = "ARIMAX Model Predictions with Intervals")
+
+# Add predictions
+lines(rec.yw.fore$pred, col = "red", lty = 2)
+
+
+# Add legend
+legend("topleft", legend = c("Original Data", "Predictions", "Prediction Intervals"), 
+       col = c("blue", "red", "green"), lty = c(1, 2, 3), lwd = 2, bg = "white")
+
+```
+
+```{r}
+
+auto.arima(tsi_data$tsi_total)
+
+```
+The ARIMA(1,1,2) model for tsi_data$tsi_total suggests a moderate autoregressive effect (AR1 = 0.9266) and two lagged moving average effects (MA1 = -0.4915, MA2 = -0.4794). The model's goodness of fit is indicated by a log-likelihood of -659.41 and evaluation criteria such as AIC = 1326.81, AICc = 1326.95, and BIC = 1341.45.
+
+```{r}
+
+arimax_model <- arima((tsi_data$tsi_total), order = c(1, 1, 2))
+
+# Summary of the ARIMAX model
+summary(arimax_model)
+
+residuals <- residuals(arimax_model)
+acf(residuals, main = "ACF of ARIMAX Model Residuals", na.action = na.pass)
+
+plot(residuals(arimax_model))
+
+# Remove missing values from residuals
+clean_residuals <- residuals[!is.na(residuals)]
+
+residuals <- clean_residuals
+
+hist(residuals,main="histogram",xlab="resid")
+
+qqnorm(residuals,main="Normal Q-Q plot",xlab="resid"); qqline(residuals)
+
+shapiro.test(residuals)
+
+acf(as.numeric(residuals), lag.max=40, main="")
+
+Box.test(residuals, lag=4, fitdf=1)
+
+Box.test(residuals, lag=8, fitdf=1)
+
+Box.test(residuals, lag=4, type="Ljung", fitdf=1)
+
+rec.yw.fore <- predict(arimax_model, n.ahead=48)
+rec.yw.fore
+
+plot(tsi_data$tsi_total, type = "l", col = "blue", lwd = 2, 
+     xlab = "Time", ylab = "TSI Total", main = "ARIMAX Model Predictions with Intervals")
+
+# Add predictions
+lines(rec.yw.fore$pred, col = "red", lty = 2)
+
+
+# Add legend
+legend("topleft", legend = c("Original Data", "Predictions", "Prediction Intervals"), 
+       col = c("blue", "red", "green"), lty = c(1, 2, 3), lwd = 2, bg = "white")
+
+
+```
+Above is the fitted model for the order 1, 1, 2 however the residuals are not normal but it is mostly to the sharp decline in the covid duration.
+
+Following is the series of tests preforamed to verify the arch effect on the data 
+
+```{r}
+
+r.cref <-  diff(tsi_data$tsi_total); plot(r.cref, type = "l"); abline(h=0)
+
+par(mar=c(4.5,5,1.5,1), mfcol=c(2,3))
+acf(r.cref, main="return", xlab="Lag", lag=50)
+pacf(r.cref, main="", xlab="Lag", lag=50)
+acf(abs(r.cref), main="abs return", xlab="Lag", lag=50)
+pacf(abs(r.cref), main="", xlab="Lag", lag=50)
+acf(r.cref^2, main="sqr return", xlab="Lag", lag=50)
+pacf(r.cref^2, main="", xlab="Lag", lag=50)
+
+summary(r.cref)
+skewness(r.cref)
+kurtosis(r.cref)
+qqnorm(r.cref)
+qqline(r.cref)
+shapiro.test(r.cref)
+
+
+```
+
+```{R}
+
+McLeod.Li.test(y=r.cref)
+
+```
+After verifying the above plots and the statistical test we can determine that there is an arch effect
+
+Following is the garch model implemented of 1, 0 
+```{r}
+
+library(tseries)
+
+squared_returns <- r.cref
+# Fit ARCH(1) model
+arch_model <- garch(squared_returns, order=c(1,0))
+
+# Summary of the ARCH model
+summary(arch_model)
+
+library(fGarch)
+
+residuals_square <- arch_model$residuals^2
+# Identify missing values in residuals
+missing_values <- is.na(residuals_square)
+
+# Impute missing values with the mean of non-missing values
+mean_residuals <- mean(residuals_square, na.rm = TRUE)
+residuals_square[missing_values] <- mean_residuals
+
+# Now you can proceed with your analysis using the updated residuals
+
+plot(arch_model$residuals, type = "l", ylab = "Residuals", main = "Residuals Plot")
+
+# ACF and PACF of Squared Residuals
+par(mfrow = c(2, 1))
+acf(residuals_square, main = "ACF of Squared Residuals")
+pacf(residuals_square, main = "PACF of Squared Residuals")
+
+# Jarque-Bera Test
+jarque_bera <- jarque.bera.test(residuals_square)
+print(jarque_bera)
+
+# Box-Ljung Test
+box_ljung <- Box.test(arch_model$residuals^2, lag = 1, type = "Ljung")
+print(box_ljung)
+
+# Model Fit Statistics
+print(arch_model)
+
+McLeod.Li.test(y=arch_model$residuals)
+
+```
+After verifying the results and plots it indicates arch effect in the model.
+
+```{r}
+
+library(tseries)
+
+# Fit ARCH(1) model
+arch_model <- garch(r.cref, order=c(1,1))
+
+# Summary of the ARCH model
+summary(arch_model)
+
+library(fGarch)
+
+residuals_square <- arch_model$residuals^2
+# Identify missing values in residuals
+missing_values <- is.na(residuals_square)
+
+# Impute missing values with the mean of non-missing values
+mean_residuals <- mean(residuals_square, na.rm = TRUE)
+residuals_square[missing_values] <- mean_residuals
+
+plot(arch_model$residuals, type = "l", ylab = "Residuals", main = "Residuals Plot")
+
+# ACF and PACF of Squared Residuals
+par(mfrow = c(2, 1))
+acf(residuals_square, main = "ACF of Squared Residuals")
+pacf(residuals_square, main = "PACF of Squared Residuals")
+
+# Jarque-Bera Test
+jarque_bera <- jarque.bera.test(residuals_square)
+print(jarque_bera)
+
+# Box-Ljung Test
+box_ljung <- Box.test(residuals_square, lag = 1, type = "Ljung")
+print(box_ljung)
+
+# Model Fit Statistics
+print(arch_model)
+
+McLeod.Li.test(y=arch_model$residuals)
+
+```
+After verifying the results and plots it indicates there is no arch effect in the model and the model is adequate.
+
+```{r}
+
+library(tseries)
+
+# Assuming r.cref contains your returns
+# Square the returns
+squared_returns <- r.cref
+
+# Fit ARCH(1) model
+arch_model_2_0 <- garch(squared_returns, order=c(2,0))
+
+# Summary of the ARCH model
+summary(arch_model_2_0)
+
+library(fGarch)
+
+residuals_square <- arch_model_2_0$residuals^2
+# Identify missing values in residuals
+missing_values <- is.na(residuals_square)
+
+# Impute missing values with the mean of non-missing values
+mean_residuals <- mean(residuals_square, na.rm = TRUE)
+residuals_square[missing_values] <- mean_residuals
+
+# Now you can proceed with your analysis using the updated residuals
+
+plot(arch_model_2_0$residuals, type = "l", ylab = "Residuals", main = "Residuals Plot")
+
+# ACF and PACF of Squared Residuals
+par(mfrow = c(2, 1))
+acf(residuals_square, main = "ACF of Squared Residuals")
+pacf(residuals_square, main = "PACF of Squared Residuals")
+
+# Jarque-Bera Test
+jarque_bera <- jarque.bera.test(residuals_square)
+print(jarque_bera)
+
+# Box-Ljung Test
+box_ljung <- Box.test(arch_model_2_0$residuals^2, lag = 1, type = "Ljung")
+print(box_ljung)
+
+# Model Fit Statistics
+print(arch_model_2_0)
+
+McLeod.Li.test(y=arch_model_2_0$residuals)
+
+```
+After verifying the results and plots it indicates there is  arch effect in the model and the model is not adequate.
+
