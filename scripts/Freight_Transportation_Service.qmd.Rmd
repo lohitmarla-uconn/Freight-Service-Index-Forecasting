@@ -25,7 +25,7 @@ Overall, this project aims to contribute to a better understanding of the dynami
 
 library(tidyverse)
 library(tseries)
-transportation <- read_csv("Transportation_Services_Index_and_Seasonally.csv")
+transportation <- read_csv("data/Transportation_Services_Index_and_Seasonally.csv")
 transportation
 
 ```
